@@ -4,18 +4,28 @@ import sqlite3
 import pandas as pd
 from datetime import datetime
 
-# 修复: Streamlit 在非主线程运行脚本，qstock 导入时注册 signal handler 会报错
-_orig_signal = _signal.signal
-def _safe_signal(signalnum, handler):
-    try:
-        return _orig_signal(signalnum, handler)
-    except ValueError:
-        pass
-_signal.signal = _safe_signal
+# qstock 懒加载：不在文件头部导入，避免导入时触发网络请求导致报错
+# 只在 get_fund_row_from_api 函数内部按需导入
+_qs = None
 
-import qstock as qs
-
-_signal.signal = _orig_signal  # 恢复原始 signal
+def get_qs():
+    """懒加载 qstock，只在首次调用时导入"""
+    global _qs
+    if _qs is None:
+        # 修复: Streamlit 在非主线程运行脚本，qstock 导入时注册 signal handler 会报错
+        _orig_signal = _signal.signal
+        def _safe_signal(signalnum, handler):
+            try:
+                return _orig_signal(signalnum, handler)
+            except ValueError:
+                pass
+        _signal.signal = _safe_signal
+        try:
+            import qstock as qs
+            _qs = qs
+        finally:
+            _signal.signal = _orig_signal  # 恢复原始 signal
+    return _qs
 
 # ============================================================
 # 数据库初始化
@@ -200,8 +210,12 @@ def load_fund_from_db(code):
 # 基金数据获取
 # ============================================================
 def get_fund_row_from_api(code):
-    """从 API 获取基金数据"""
+    """从 API 获取基金数据（懒加载 qstock）"""
     try:
+        qs = get_qs()
+        if qs is None:
+            raise ValueError("qstock 导入失败")
+        
         # 判断是场内ETF还是场外基金
         try:
             rt = qs.realtime_data(code=code)
