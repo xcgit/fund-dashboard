@@ -257,17 +257,42 @@ def get_fund_row_from_api(code):
             if rt is not None and not rt.empty and "最新" in rt.columns:
                 price = rt["最新"].iloc[0]
                 chg_pct = rt["涨幅"].iloc[0] if "涨幅" in rt.columns else 0
-                # 成交额
-                if "成交额" in rt.columns:
-                    amount = float(rt["成交额"].iloc[0] or 0)
-                # 总市值（规模）
-                if "总市值" in rt.columns:
-                    scale = float(rt["总市值"].iloc[0] or 0)
-                # 折溢价率
-                if "IOPV" in rt.columns:
+                # 打印所有列名方便调试（只打一次）
+                if not hasattr(get_fund_row_from_api, '_debug_printed'):
+                    st.info(f"realtime_data 可用列: {list(rt.columns)}")
+                    get_fund_row_from_api._debug_printed = True
+                # 成交额 - 匹配 成交额/成交金额
+                for cname in ['成交额', '成交金额']:
+                    if cname in rt.columns:
+                        amount = float(rt[cname].iloc[0] or 0)
+                        break
+                # 规模 - 匹配 总市值/流通市值
+                for cname in ['总市值', '流通市值', '市值']:
+                    if cname in rt.columns:
+                        scale = float(rt[cname].iloc[0] or 0)
+                        break
+                # 折溢价率 - 优先用列值，否则用 IOPV 计算
+                if '折溢价率' in rt.columns:
+                    premium = float(rt['折溢价率'].iloc[0] or 0)
+                elif 'IOPV' in rt.columns:
                     iopv = float(rt["IOPV"].iloc[0] or 0)
                     if iopv > 0 and price and price > 0:
                         premium = round((price - iopv) / iopv * 100, 2)
+                # 市盈率 - 匹配
+                for cname in ['市盈率', '市盈率-动态', 'PE']:
+                    if cname in rt.columns:
+                        pe = float(rt[cname].iloc[0] or 0)
+                        break
+                # 市净率 - 匹配
+                for cname in ['市净率', 'PB']:
+                    if cname in rt.columns:
+                        pb = float(rt[cname].iloc[0] or 0)
+                        break
+                # 股息率
+                for cname in ['股息率', '股息率(%)']:
+                    if cname in rt.columns:
+                        dividend = float(rt[cname].iloc[0] or 0)
+                        break
             else:
                 raise ValueError("场内数据为空，尝试场外获取")
         except Exception as e1:
