@@ -34,11 +34,101 @@ def init_db():
                       update_time TEXT,
                       PRIMARY KEY (code, update_time))''')
         
+        # 创建基金列表配置表
+        c.execute('''CREATE TABLE IF NOT EXISTS fund_list
+                     (type TEXT, code TEXT, create_time TEXT,
+                      PRIMARY KEY (type, code))''')
+        
         conn.commit()
         conn.close()
         print("✅ 数据库初始化成功")
     except Exception as e:
         print(f"❌ 数据库初始化失败: {e}")
+
+def load_fund_list():
+    """从数据库加载基金列表"""
+    try:
+        conn = sqlite3.connect('fund_dashboard.db', check_same_thread=False)
+        c = conn.cursor()
+        
+        # 读取场内ETF列表
+        c.execute("SELECT code FROM fund_list WHERE type='etf' ORDER BY create_time")
+        etf_codes = [row[0] for row in c.fetchall()]
+        
+        # 读取场外基金列表
+        c.execute("SELECT code FROM fund_list WHERE type='outside' ORDER BY create_time")
+        outside_codes = [row[0] for row in c.fetchall()]
+        
+        conn.close()
+        
+        # 如果数据库为空，插入默认数据
+        if not etf_codes and not outside_codes:
+            print("📊 数据库无基金列表，插入默认数据...")
+            return insert_default_fund_list()
+        
+        return etf_codes, outside_codes
+    except Exception as e:
+        print(f"❌ 加载基金列表失败: {e}")
+        return insert_default_fund_list()
+
+def insert_default_fund_list():
+    """插入默认基金列表到数据库"""
+    default_etf = ["510300","510500","588000","159501","513100","159928","512890","512800"]
+    default_outside = ["006100","470009","375010","007751","110020","017641","021301","016440","025856","008774"]
+    
+    try:
+        conn = sqlite3.connect('fund_dashboard.db', check_same_thread=False)
+        c = conn.cursor()
+        
+        # 插入默认场内ETF
+        for code in default_etf:
+            c.execute("INSERT OR IGNORE INTO fund_list (type, code, create_time) VALUES (?, ?, ?)",
+                     ('etf', code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
+        # 插入默认场外基金
+        for code in default_outside:
+            c.execute("INSERT OR IGNORE INTO fund_list (type, code, create_time) VALUES (?, ?, ?)",
+                     ('outside', code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
+        conn.commit()
+        conn.close()
+        
+        print("✅ 默认基金列表已插入数据库")
+        return default_etf, default_outside
+    except Exception as e:
+        print(f"❌ 插入默认基金列表失败: {e}")
+        return default_etf, default_outside
+
+def add_fund_to_list(fund_type, code):
+    """添加基金到列表"""
+    try:
+        conn = sqlite3.connect('fund_dashboard.db', check_same_thread=False)
+        c = conn.cursor()
+        
+        c.execute("INSERT OR IGNORE INTO fund_list (type, code, create_time) VALUES (?, ?, ?)",
+                 (fund_type, code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ 添加基金失败: {e}")
+        return False
+
+def remove_fund_from_list(fund_type, code):
+    """从列表删除基金"""
+    try:
+        conn = sqlite3.connect('fund_dashboard.db', check_same_thread=False)
+        c = conn.cursor()
+        
+        c.execute("DELETE FROM fund_list WHERE type=? AND code=?", (fund_type, code))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"❌ 删除基金失败: {e}")
+        return False
 
 def save_fund_to_db(fund_dict):
     """将基金数据写入 SQLite"""
@@ -179,13 +269,8 @@ def get_fund_row(code, force_refresh=False):
 # ============================================================
 # 主程序
 # ============================================================
-# 基金分类
-ETF_CODES = [
-    "510300","510500","588000","159501","513100","159928","512890","512800"
-]
-OUTSIDE_CODES = [
-    "006100","470009","375010","007751","110020","017641","021301","016440","025856","008774"
-]
+# 从数据库加载基金列表
+ETF_CODES, OUTSIDE_CODES = load_fund_list()
 
 REFRESH_SECONDS = 300
 
@@ -212,8 +297,10 @@ def check_auto_update():
         if last_update_date != today and current_hour >= 7:
             print(f"📊 触发自动更新: {today} {now.strftime('%H:%M:%S')}")
             
-            # 更新所有基金数据
-            ALL_CODES = ETF_CODES + OUTSIDE_CODES
+            # 从数据库重新加载基金列表
+            etf_codes, outside_codes = load_fund_list()
+            ALL_CODES = etf_codes + outside_codes
+            
             updated_count = 0
             
             for code in ALL_CODES:
@@ -251,12 +338,44 @@ with tab1:
     st.subheader("场内 ETF 行情")
     
     # 手动刷新按钮
-    col1, col2 = st.columns([1, 9])
+    col1, col2, col3 = st.columns([1, 1, 8])
     with col1:
         if st.button("🔄 刷新场内", key="refresh_etf", type="primary"):
             st.session_state.force_refresh_etf = True
             st.success("✅ 正在从 API 获取最新数据...")
             st.rerun()
+    with col2:
+        if st.button("🗑️ 管理", key="manage_etf", type="secondary"):
+            st.session_state.show_etf_manage = not st.session_state.get('show_etf_manage', False)
+    
+    # 基金管理界面
+    if st.session_state.get('show_etf_manage', False):
+        with st.expander("📝 管理场内 ETF 列表", expanded=True):
+            # 显示当前列表
+            st.write("**当前列表：**")
+            for code in ETF_CODES:
+                col_a, col_b = st.columns([1, 1])
+                with col_a:
+                    st.text(code)
+                with col_b:
+                    if st.button(f"🗑️", key=f"del_etf_{code}", help="删除"):
+                        if remove_fund_from_list('etf', code):
+                            ETF_CODES.remove(code)
+                            st.success(f"✅ 已删除 {code}")
+                            st.rerun()
+            
+            # 添加新基金
+            st.write("**添加基金：**")
+            new_etf = st.text_input("输入基金代码", key="new_etf_code", placeholder="例如: 510300")
+            if st.button("➕ 添加", key="add_etf_btn") and new_etf:
+                code = new_etf.strip()
+                if code not in ETF_CODES:
+                    if add_fund_to_list('etf', code):
+                        ETF_CODES.append(code)
+                        st.success(f"✅ 已添加 {code}")
+                        st.rerun()
+                else:
+                    st.warning("⚠️ 已在列表中")
     
     # 加载数据
     with st.spinner("正在加载场内 ETF 数据..."):
@@ -272,17 +391,50 @@ with tab1:
     
     df_etf = pd.DataFrame(rows)
     st.dataframe(df_etf, use_container_width=True, hide_index=True)
+    st.caption(f"当前监控 {len(ETF_CODES)} 只场内 ETF")
 
 with tab2:
     st.subheader("场外基金行情")
     
     # 手动刷新按钮
-    col1, col2 = st.columns([1, 9])
+    col1, col2, col3 = st.columns([1, 1, 8])
     with col1:
         if st.button("🔄 刷新场外", key="refresh_outside", type="primary"):
             st.session_state.force_refresh_outside = True
             st.success("✅ 正在从 API 获取最新数据...")
             st.rerun()
+    with col2:
+        if st.button("🗑️ 管理", key="manage_outside", type="secondary"):
+            st.session_state.show_outside_manage = not st.session_state.get('show_outside_manage', False)
+    
+    # 基金管理界面
+    if st.session_state.get('show_outside_manage', False):
+        with st.expander("📝 管理场外基金列表", expanded=True):
+            # 显示当前列表
+            st.write("**当前列表：**")
+            for code in OUTSIDE_CODES:
+                col_a, col_b = st.columns([1, 1])
+                with col_a:
+                    st.text(code)
+                with col_b:
+                    if st.button(f"🗑️", key=f"del_outside_{code}", help="删除"):
+                        if remove_fund_from_list('outside', code):
+                            OUTSIDE_CODES.remove(code)
+                            st.success(f"✅ 已删除 {code}")
+                            st.rerun()
+            
+            # 添加新基金
+            st.write("**添加基金：**")
+            new_outside = st.text_input("输入基金代码", key="new_outside_code", placeholder="例如: 006100")
+            if st.button("➕ 添加", key="add_outside_btn") and new_outside:
+                code = new_outside.strip()
+                if code not in OUTSIDE_CODES:
+                    if add_fund_to_list('outside', code):
+                        OUTSIDE_CODES.append(code)
+                        st.success(f"✅ 已添加 {code}")
+                        st.rerun()
+                else:
+                    st.warning("⚠️ 已在列表中")
     
     # 加载数据
     with st.spinner("正在加载场外基金数据..."):
@@ -298,14 +450,19 @@ with tab2:
     
     df_outside = pd.DataFrame(rows)
     st.dataframe(df_outside, use_container_width=True, hide_index=True)
+    st.caption(f"当前监控 {len(OUTSIDE_CODES)} 只场外基金")
 
 # 导出 Excel（合并两个 Tab 的数据）
 @st.cache_data
 def generate_excel():
     import io
+    # 从数据库重新加载基金列表
+    etf_codes, outside_codes = load_fund_list()
+    all_codes = etf_codes + outside_codes
+    
     # 合并所有基金数据
     all_rows = []
-    for code in ETF_CODES + OUTSIDE_CODES:
+    for code in all_codes:
         data = load_fund_from_db(code)
         if data:
             all_rows.append(data)
