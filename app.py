@@ -216,6 +216,9 @@ def get_fund_row_from_api(code):
         if qs is None:
             raise ValueError("qstock 导入失败")
         
+        price = None
+        chg_pct = 0
+        
         # 判断是场内ETF还是场外基金
         try:
             rt = qs.realtime_data(code=code)
@@ -224,28 +227,41 @@ def get_fund_row_from_api(code):
                 chg_pct = rt["涨幅"].iloc[0]
             else:
                 raise ValueError("场内数据为空，尝试场外获取")
-        except Exception:
+        except Exception as e1:
+            print(f"[{code}] 场内获取失败: {e1}")
             # 场外基金使用 fund_price 获取净值
-            price_data = qs.fund_price(code)
-            if price_data is not None and not price_data.empty:
-                price = price_data.iloc[-1] if len(price_data.shape) == 1 else price_data.iloc[-1, 0]
-                price = float(price)
-                chg_pct = 0
-            else:
-                raise ValueError("无法获取基金价格数据")
+            try:
+                price_data = qs.fund_price(code)
+                if price_data is not None and not price_data.empty:
+                    price = price_data.iloc[-1] if len(price_data.shape) == 1 else price_data.iloc[-1, 0]
+                    price = float(price)
+                    chg_pct = 0
+                else:
+                    raise ValueError("无法获取基金价格数据")
+            except Exception as e2:
+                print(f"[{code}] 场外获取失败: {e2}")
+                raise ValueError(f"价格获取失败: 场内={e1}, 场外={e2}")
 
         # 基金基本信息
-        info_df = qs.fund_info(code)
-        if info_df is None or info_df.empty:
-            raise ValueError("无法获取基金基本信息")
-        name = info_df["基金简称"].iloc[0]
+        try:
+            info_df = qs.fund_info(code)
+            if info_df is None or info_df.empty:
+                raise ValueError("无法获取基金基本信息")
+            name = info_df["基金简称"].iloc[0]
+        except Exception as e3:
+            print(f"[{code}] 基金信息获取失败: {e3}")
+            raise ValueError(f"基金信息获取失败: {e3}")
 
         # 基金业绩表现
-        perf = qs.fund_perfmance(code)
-        if perf is None or perf.empty:
+        try:
+            perf = qs.fund_perfmance(code)
+            if perf is None or perf.empty:
+                pmap = {}
+            else:
+                pmap = dict(zip(perf["时间段"], perf["收益率"]))
+        except Exception as e4:
+            print(f"[{code}] 业绩数据获取失败: {e4}")
             pmap = {}
-        else:
-            pmap = dict(zip(perf["时间段"], perf["收益率"]))
 
         fund_dict = {
             "代码": code,
