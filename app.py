@@ -362,38 +362,40 @@ with tab1:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_etf_delete', False):
-        # 管理模式下，逐行渲染表格（删除按钮在代码列前）
-        if rows:
-            # 获取所有列
-            all_columns = list(rows[0].keys())
-            
-            # 渲染表头
-            header_cols = st.columns([0.8] + [9.2/len(all_columns)]*len(all_columns))
-            with header_cols[0]:
-                st.markdown("**操作**")
-            
-            for j, col in enumerate(all_columns):
-                with header_cols[j+1]:
-                    st.markdown(f"**{col}**")
-            
-            st.divider()
-            
-            # 渲染每一行
-            for row_data in rows:
-                data_cols = st.columns([0.8] + [9.2/len(all_columns)]*len(all_columns))
-                
-                with data_cols[0]:
-                    # 删除按钮
+        # 管理模式下，显示带删除功能的数据
+        st.markdown("**管理模式：** 点击 ❌ 删除基金")
+        
+        for row_data in rows:
+            # 每个基金显示为一个卡片
+            with st.container(border=True):
+                # 第一行：[删除按钮] [代码] [名称]
+                col_del, col_code, col_name = st.columns([1, 2, 5])
+                with col_del:
                     if st.button("❌", key=f"del_etf_{row_data['代码']}", help="删除"):
                         remove_fund_from_list('etf', row_data['代码'])
                         ETF_CODES.remove(row_data['代码'])
                         st.rerun()
+                with col_code:
+                    st.markdown(f"`{row_data['代码']}`")
+                with col_name:
+                    st.caption(row_data.get('名称', ''))
                 
-                for j, col in enumerate(all_columns):
-                    with data_cols[j+1]:
-                        st.write(row_data.get(col, ''))
+                # 其余数据显示为键值对
+                rest_data = {k: v for k, v in row_data.items() 
+                           if k not in ['代码', '名称']}
                 
-                st.divider()
+                # 用两列显示其余数据
+                keys = list(rest_data.keys())
+                half = (len(keys) + 1) // 2
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    for key in keys[:half]:
+                        st.write(f"**{key}**: {rest_data[key]}")
+                
+                with col_right:
+                    for key in keys[half:]:
+                        st.write(f"**{key}**: {rest_data[key]}")
     else:
         # 正常模式，直接显示表格
         if rows:
@@ -453,38 +455,40 @@ with tab2:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_outside_delete', False):
-        # 管理模式下，逐行渲染表格（删除按钮在代码列前）
-        if rows:
-            # 获取所有列
-            all_columns = list(rows[0].keys())
-            
-            # 渲染表头
-            header_cols = st.columns([0.8] + [9.2/len(all_columns)]*len(all_columns))
-            with header_cols[0]:
-                st.markdown("**操作**")
-            
-            for j, col in enumerate(all_columns):
-                with header_cols[j+1]:
-                    st.markdown(f"**{col}**")
-            
-            st.divider()
-            
-            # 渲染每一行
-            for row_data in rows:
-                data_cols = st.columns([0.8] + [9.2/len(all_columns)]*len(all_columns))
-                
-                with data_cols[0]:
-                    # 删除按钮
+        # 管理模式下，显示带删除功能的数据（卡片布局，移动端友好）
+        st.markdown("**管理模式：** 点击 ❌ 删除基金")
+        
+        for row_data in rows:
+            # 每个基金显示为一个卡片
+            with st.container(border=True):
+                # 第一行：[删除按钮] [代码] [名称]
+                col_del, col_code, col_name = st.columns([1, 2, 5])
+                with col_del:
                     if st.button("❌", key=f"del_outside_{row_data['代码']}", help="删除"):
                         remove_fund_from_list('outside', row_data['代码'])
                         OUTSIDE_CODES.remove(row_data['代码'])
                         st.rerun()
+                with col_code:
+                    st.markdown(f"`{row_data['代码']}`")
+                with col_name:
+                    st.caption(row_data.get('名称', ''))
                 
-                for j, col in enumerate(all_columns):
-                    with data_cols[j+1]:
-                        st.write(row_data.get(col, ''))
+                # 其余数据显示为键值对
+                rest_data = {k: v for k, v in row_data.items() 
+                           if k not in ['代码', '名称']}
                 
-                st.divider()
+                # 用两列显示其余数据
+                keys = list(rest_data.keys())
+                half = (len(keys) + 1) // 2
+                col_left, col_right = st.columns(2)
+                
+                with col_left:
+                    for key in keys[:half]:
+                        st.write(f"**{key}**: {rest_data[key]}")
+                
+                with col_right:
+                    for key in keys[half:]:
+                        st.write(f"**{key}**: {rest_data[key]}")
     else:
         # 正常模式，直接显示表格
         if rows:
