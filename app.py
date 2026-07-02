@@ -362,26 +362,27 @@ with tab1:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_etf_delete', False):
-        # 管理模式下，显示带删除按钮的列表
+        # 管理模式下，逐行显示：[删除] [完整数据行]
         for i, row_data in enumerate(rows):
-            # 每行： [删除按钮] [完整数据行]
-            col_btn, col_data = st.columns([1, 9])
+            col_btn, col_row = st.columns([0.8, 9.2])
             
             with col_btn:
-                # 删除按钮
-                st.write("")  # 垂直对齐
-                if st.button("❌", key=f"del_etf_{row_data['代码']}", help="删除该基金"):
+                # 删除按钮（和这行数据在同一行）
+                if i == 0:
+                    st.write("**操作**")  # 表头
+                if st.button("❌", key=f"del_etf_{row_data['代码']}", 
+                           help=f"删除 {row_data['代码']}"):
                     if remove_fund_from_list('etf', row_data['代码']):
                         ETF_CODES.remove(row_data['代码'])
                         st.success(f"✅ 已删除 {row_data['代码']}")
                         st.rerun()
             
-            with col_data:
-                # 显示完整数据行
+            with col_row:
+                # 这行的完整数据
                 df_row = pd.DataFrame([row_data])
                 st.dataframe(df_row, use_container_width=True, hide_index=True)
             
-            # 行间隔（除了最后一行）
+            # 行间隔
             if i < len(rows) - 1:
                 st.write("")
     else:
@@ -442,26 +443,27 @@ with tab2:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_outside_delete', False):
-        # 管理模式下，显示带删除按钮的列表
+        # 管理模式下，逐行显示：[删除] [完整数据行]
         for i, row_data in enumerate(rows):
-            # 每行： [删除按钮] [完整数据行]
-            col_btn, col_data = st.columns([1, 9])
+            col_btn, col_row = st.columns([0.8, 9.2])
             
             with col_btn:
-                # 删除按钮
-                st.write("")  # 垂直对齐
-                if st.button("❌", key=f"del_outside_{row_data['代码']}", help="删除该基金"):
+                # 删除按钮（和这行数据在同一行）
+                if i == 0:
+                    st.write("**操作**")  # 表头
+                if st.button("❌", key=f"del_outside_{row_data['代码']}", 
+                           help=f"删除 {row_data['代码']}"):
                     if remove_fund_from_list('outside', row_data['代码']):
                         OUTSIDE_CODES.remove(row_data['代码'])
                         st.success(f"✅ 已删除 {row_data['代码']}")
                         st.rerun()
             
-            with col_data:
-                # 显示完整数据行
+            with col_row:
+                # 这行的完整数据
                 df_row = pd.DataFrame([row_data])
                 st.dataframe(df_row, use_container_width=True, hide_index=True)
             
-            # 行间隔（除了最后一行）
+            # 行间隔
             if i < len(rows) - 1:
                 st.write("")
     else:
