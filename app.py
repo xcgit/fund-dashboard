@@ -179,11 +179,14 @@ def get_fund_row(code, force_refresh=False):
 # ============================================================
 # 主程序
 # ============================================================
-# 全部监控基金
-WATCH_CODES = [
-    "510300","510500","588000","159501","513100","159928","512890","512800",
+# 基金分类
+ETF_CODES = [
+    "510300","510500","588000","159501","513100","159928","512890","512800"
+]
+OUTSIDE_CODES = [
     "006100","470009","375010","007751","110020","017641","021301","016440","025856","008774"
 ]
+
 REFRESH_SECONDS = 300
 
 # 初始化数据库
@@ -193,38 +196,80 @@ st.set_page_config(page_title="仪表盘", layout="wide")
 st.title("📊 仪表盘")
 st.caption(f"数据来源: SQLite + qstock · 支持手动刷新")
 
-# 手动刷新按钮
-col1, col2 = st.columns([1, 9])
-with col1:
-    if st.button("🔄 刷新全部", type="primary", help="从 API 强制刷新所有基金数据"):
-        st.session_state.force_refresh = True
-        st.success("✅ 正在从 API 获取最新数据...")
-        st.rerun()
+# 创建两个 Tab
+tab1, tab2 = st.tabs(["📈 场内 ETF", "🏢 场外基金"])
 
-# 加载数据
-with st.spinner("正在加载数据..."):
-    rows = []
-    for code in WATCH_CODES:
-        force = st.session_state.get('force_refresh', False)
-        fund_data = get_fund_row(code, force_refresh=force)
-        rows.append(fund_data)
+with tab1:
+    st.subheader("场内 ETF 行情")
     
-    # 重置强制刷新标志
-    if 'force_refresh' in st.session_state:
-        del st.session_state.force_refresh
+    # 手动刷新按钮
+    col1, col2 = st.columns([1, 9])
+    with col1:
+        if st.button("🔄 刷新场内", key="refresh_etf", type="primary"):
+            st.session_state.force_refresh_etf = True
+            st.success("✅ 正在从 API 获取最新数据...")
+            st.rerun()
+    
+    # 加载数据
+    with st.spinner("正在加载场内 ETF 数据..."):
+        rows = []
+        for code in ETF_CODES:
+            force = st.session_state.get('force_refresh_etf', False)
+            fund_data = get_fund_row(code, force_refresh=force)
+            rows.append(fund_data)
+        
+        # 重置强制刷新标志
+        if 'force_refresh_etf' in st.session_state:
+            del st.session_state.force_refresh_etf
+    
+    df_etf = pd.DataFrame(rows)
+    st.dataframe(df_etf, use_container_width=True, hide_index=True)
 
-df = pd.DataFrame(rows)
-st.dataframe(df, use_container_width=True, hide_index=True)
+with tab2:
+    st.subheader("场外基金行情")
+    
+    # 手动刷新按钮
+    col1, col2 = st.columns([1, 9])
+    with col1:
+        if st.button("🔄 刷新场外", key="refresh_outside", type="primary"):
+            st.session_state.force_refresh_outside = True
+            st.success("✅ 正在从 API 获取最新数据...")
+            st.rerun()
+    
+    # 加载数据
+    with st.spinner("正在加载场外基金数据..."):
+        rows = []
+        for code in OUTSIDE_CODES:
+            force = st.session_state.get('force_refresh_outside', False)
+            fund_data = get_fund_row(code, force_refresh=force)
+            rows.append(fund_data)
+        
+        # 重置强制刷新标志
+        if 'force_refresh_outside' in st.session_state:
+            del st.session_state.force_refresh_outside
+    
+    df_outside = pd.DataFrame(rows)
+    st.dataframe(df_outside, use_container_width=True, hide_index=True)
 
-# 导出 Excel
+# 导出 Excel（合并两个 Tab 的数据）
 @st.cache_data
-def generate_excel(df_data):
+def generate_excel():
     import io
+    # 合并所有基金数据
+    all_rows = []
+    for code in ETF_CODES + OUTSIDE_CODES:
+        data = load_fund_from_db(code)
+        if data:
+            all_rows.append(data)
+        else:
+            all_rows.append(get_fund_row_from_api(code))
+    
+    df_all = pd.DataFrame(all_rows)
     buffer = io.BytesIO()
-    df_data.to_excel(buffer, index=False)
+    df_all.to_excel(buffer, index=False)
     return buffer.getvalue()
 
-excel_bytes = generate_excel(df)
+excel_bytes = generate_excel()
 st.download_button(
     label="📥 导出Excel文件",
     data=excel_bytes,
@@ -232,4 +277,4 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-st.info(f"💡 提示: 首次运行会从 API 获取数据并保存到数据库，后续直接从数据库读取（除非点击「刷新全部」）")
+st.info(f"💡 提示: 首次运行会从 API 获取数据并保存到数据库，后续直接从数据库读取（除非点击「刷新」按钮）")
