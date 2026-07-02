@@ -362,20 +362,28 @@ with tab1:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_etf_delete', False):
-        # 管理模式下，每条数据前显示删除按钮（同一行）
+        # 管理模式下，显示带删除按钮的列表
         for i, row_data in enumerate(rows):
-            col_del, col_data = st.columns([0.5, 9.5])
-            with col_del:
-                st.write("")  # 空行对齐
+            # 每行： [删除按钮] [完整数据行]
+            col_btn, col_data = st.columns([1, 9])
+            
+            with col_btn:
+                # 删除按钮
+                st.write("")  # 垂直对齐
                 if st.button("❌", key=f"del_etf_{row_data['代码']}", help="删除该基金"):
                     if remove_fund_from_list('etf', row_data['代码']):
                         ETF_CODES.remove(row_data['代码'])
                         st.success(f"✅ 已删除 {row_data['代码']}")
                         st.rerun()
+            
             with col_data:
-                st.dataframe(pd.DataFrame([row_data]), use_container_width=True, hide_index=True)
+                # 显示完整数据行
+                df_row = pd.DataFrame([row_data])
+                st.dataframe(df_row, use_container_width=True, hide_index=True)
+            
+            # 行间隔（除了最后一行）
             if i < len(rows) - 1:
-                st.divider()
+                st.write("")
     else:
         # 正常模式下，直接显示表格
         df_etf = pd.DataFrame(rows)
@@ -434,20 +442,28 @@ with tab2:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_outside_delete', False):
-        # 管理模式下，每条数据前显示删除按钮（同一行）
+        # 管理模式下，显示带删除按钮的列表
         for i, row_data in enumerate(rows):
-            col_del, col_data = st.columns([0.5, 9.5])
-            with col_del:
-                st.write("")  # 空行对齐
+            # 每行： [删除按钮] [完整数据行]
+            col_btn, col_data = st.columns([1, 9])
+            
+            with col_btn:
+                # 删除按钮
+                st.write("")  # 垂直对齐
                 if st.button("❌", key=f"del_outside_{row_data['代码']}", help="删除该基金"):
                     if remove_fund_from_list('outside', row_data['代码']):
                         OUTSIDE_CODES.remove(row_data['代码'])
                         st.success(f"✅ 已删除 {row_data['代码']}")
                         st.rerun()
+            
             with col_data:
-                st.dataframe(pd.DataFrame([row_data]), use_container_width=True, hide_index=True)
+                # 显示完整数据行
+                df_row = pd.DataFrame([row_data])
+                st.dataframe(df_row, use_container_width=True, hide_index=True)
+            
+            # 行间隔（除了最后一行）
             if i < len(rows) - 1:
-                st.divider()
+                st.write("")
     else:
         # 正常模式下，直接显示表格
         df_outside = pd.DataFrame(rows)
