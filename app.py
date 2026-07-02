@@ -189,8 +189,56 @@ OUTSIDE_CODES = [
 
 REFRESH_SECONDS = 300
 
+# ============================================================
+# 自动更新检查
+# ============================================================
+def check_auto_update():
+    """检查是否需要自动更新（每天早上7点后首次访问时触发）"""
+    try:
+        # 读取上次更新时间
+        last_update_file = 'last_update.txt'
+        last_update_date = None
+        
+        if os.path.exists(last_update_file):
+            with open(last_update_file, 'r') as f:
+                last_update_date = f.read().strip()
+        
+        # 获取当前日期和时间
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        current_hour = now.hour
+        
+        # 如果今天还没更新，且当前时间 >= 7点，则触发更新
+        if last_update_date != today and current_hour >= 7:
+            print(f"📊 触发自动更新: {today} {now.strftime('%H:%M:%S')}")
+            
+            # 更新所有基金数据
+            ALL_CODES = ETF_CODES + OUTSIDE_CODES
+            updated_count = 0
+            
+            for code in ALL_CODES:
+                fund_dict = get_fund_row_from_api(code)
+                if "获取失败" not in fund_dict.get("名称", ""):
+                    updated_count += 1
+            
+            # 保存更新日期
+            with open(last_update_file, 'w') as f:
+                f.write(today)
+            
+            print(f"✅ 自动更新完成: {updated_count}/{len(ALL_CODES)} 只基金")
+            
+            return True
+        
+        return False
+    except Exception as e:
+        print(f"❌ 自动更新检查失败: {e}")
+        return False
+
 # 初始化数据库
 init_db()
+
+# 检查并触发自动更新
+check_auto_update()
 
 st.set_page_config(page_title="仪表盘", layout="wide")
 st.title("📊 仪表盘")
