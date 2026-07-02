@@ -362,10 +362,11 @@ with tab1:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_etf_delete', False):
-        # 管理模式下，每条数据前显示删除按钮
+        # 管理模式下，每条数据前显示删除按钮（同一行）
         for i, row_data in enumerate(rows):
-            col_del, col_data = st.columns([1, 9])
+            col_del, col_data = st.columns([0.5, 9.5])
             with col_del:
+                st.write("")  # 空行对齐
                 if st.button("❌", key=f"del_etf_{row_data['代码']}", help="删除该基金"):
                     if remove_fund_from_list('etf', row_data['代码']):
                         ETF_CODES.remove(row_data['代码'])
@@ -373,6 +374,8 @@ with tab1:
                         st.rerun()
             with col_data:
                 st.dataframe(pd.DataFrame([row_data]), use_container_width=True, hide_index=True)
+            if i < len(rows) - 1:
+                st.divider()
     else:
         # 正常模式下，直接显示表格
         df_etf = pd.DataFrame(rows)
@@ -431,10 +434,11 @@ with tab2:
     
     # 显示数据（根据管理状态决定是否显示删除按钮）
     if st.session_state.get('show_outside_delete', False):
-        # 管理模式下，每条数据前显示删除按钮
+        # 管理模式下，每条数据前显示删除按钮（同一行）
         for i, row_data in enumerate(rows):
-            col_del, col_data = st.columns([1, 9])
+            col_del, col_data = st.columns([0.5, 9.5])
             with col_del:
+                st.write("")  # 空行对齐
                 if st.button("❌", key=f"del_outside_{row_data['代码']}", help="删除该基金"):
                     if remove_fund_from_list('outside', row_data['代码']):
                         OUTSIDE_CODES.remove(row_data['代码'])
@@ -442,6 +446,8 @@ with tab2:
                         st.rerun()
             with col_data:
                 st.dataframe(pd.DataFrame([row_data]), use_container_width=True, hide_index=True)
+            if i < len(rows) - 1:
+                st.divider()
     else:
         # 正常模式下，直接显示表格
         df_outside = pd.DataFrame(rows)
