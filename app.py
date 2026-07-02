@@ -30,18 +30,40 @@ st.caption(f"每 {REFRESH_SECONDS//60} 分钟自动刷新 · 数据来源 qstock
 
 def get_fund_row(code):
     try:
-        # --- 实时行情（兼容场内 ETF 和场外基金） ---
-        rt = qs.realtime_data(code=code)
-        price = rt["最新"].iloc[0]
-        chg_pct = rt["涨幅"].iloc[0]
+        # 判断是场内ETF还是场外基金（简单规则：5开头多为场内ETF，场外基金用fund_price获取）
+        # 实际上 qstock 的 realtime_data 对场外基金会返回空，需要区分处理
+        
+        # 先尝试作为场内ETF获取实时行情
+        try:
+            rt = qs.realtime_data(code=code)
+            if rt is not None and not rt.empty and "最新" in rt.columns:
+                price = rt["最新"].iloc[0]
+                chg_pct = rt["涨幅"].iloc[0]
+            else:
+                raise ValueError("场内数据为空，尝试场外获取")
+        except Exception:
+            # 场外基金使用 fund_price 获取净值
+            price_data = qs.fund_price(code)
+            if price_data is not None and not price_data.empty:
+                # fund_price 返回的是历史净值，取最新一条
+                price = price_data.iloc[-1] if len(price_data.shape) == 1 else price_data.iloc[-1, 0]
+                price = float(price)
+                chg_pct = 0  # 场外基金没有实时涨跌幅
+            else:
+                raise ValueError("无法获取基金价格数据")
 
         # --- 基金基本信息 ---
         info_df = qs.fund_info(code)
+        if info_df is None or info_df.empty:
+            raise ValueError("无法获取基金基本信息")
         name = info_df["基金简称"].iloc[0]
 
         # --- 基金业绩表现 ---
         perf = qs.fund_perfmance(code)
-        pmap = dict(zip(perf["时间段"], perf["收益率"]))
+        if perf is None or perf.empty:
+            pmap = {}
+        else:
+            pmap = dict(zip(perf["时间段"], perf["收益率"]))
 
         return {
             "代码": code,
