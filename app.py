@@ -261,38 +261,24 @@ def get_fund_row_from_api(code):
                 if not hasattr(get_fund_row_from_api, '_debug_printed'):
                     st.info(f"realtime_data 可用列: {list(rt.columns)}")
                     get_fund_row_from_api._debug_printed = True
-                # 成交额 - 匹配 成交额/成交金额
-                for cname in ['成交额', '成交金额']:
-                    if cname in rt.columns:
-                        amount = float(rt[cname].iloc[0] or 0)
-                        break
-                # 规模 - 匹配 总市值/流通市值
-                for cname in ['总市值', '流通市值', '市值']:
-                    if cname in rt.columns:
-                        scale = float(rt[cname].iloc[0] or 0)
-                        break
-                # 折溢价率 - 优先用列值，否则用 IOPV 计算
-                if '折溢价率' in rt.columns:
-                    premium = float(rt['折溢价率'].iloc[0] or 0)
-                elif 'IOPV' in rt.columns:
-                    iopv = float(rt["IOPV"].iloc[0] or 0)
-                    if iopv > 0 and price and price > 0:
-                        premium = round((price - iopv) / iopv * 100, 2)
-                # 市盈率 - 匹配
-                for cname in ['市盈率', '市盈率-动态', 'PE']:
-                    if cname in rt.columns:
-                        pe = float(rt[cname].iloc[0] or 0)
-                        break
-                # 市净率 - 匹配
-                for cname in ['市净率', 'PB']:
-                    if cname in rt.columns:
-                        pb = float(rt[cname].iloc[0] or 0)
-                        break
-                # 股息率
-                for cname in ['股息率', '股息率(%)']:
-                    if cname in rt.columns:
-                        dividend = float(rt[cname].iloc[0] or 0)
-                        break
+                # 成交额 - 字符串格式如 "1.23亿"，直接存
+                if "成交额" in rt.columns:
+                    amount = str(rt["成交额"].iloc[0] or '0')
+                # 规模 - 用流通市值，字符串格式
+                if "流通市值" in rt.columns:
+                    scale = str(rt["流通市值"].iloc[0] or '0')
+                elif "总市值" in rt.columns:
+                    scale = str(rt["总市值"].iloc[0] or '0')
+                # 折溢价率 - 通过最新价和昨收计算，或 IOPV
+                if "昨收" in rt.columns and price and price > 0:
+                    prev = float(rt["昨收"].iloc[0] or 0)
+                    if prev > 0:
+                        premium = round((price - prev) / prev * 100, 2)
+                # 市盈率 - 直接是数字
+                if "市盈率" in rt.columns:
+                    pe = float(rt["市盈率"].iloc[0] or 0)
+                # 市净率 - 不在列表里，跳过
+                # 股息率 - 不在列表里，跳过
             else:
                 raise ValueError("场内数据为空，尝试场外获取")
         except Exception as e1:
@@ -346,8 +332,8 @@ def get_fund_row_from_api(code):
             "名称": name,
             "最新价": round(price, 4) if price else 0,
             "日涨跌幅(%)": round(chg_pct, 2) if chg_pct else 0,
-            "成交额": _fmt_amount(amount),
-            "规模": _fmt_amount(scale),
+            "成交额": str(amount) if amount else "0",
+            "规模": str(scale) if scale else "0",
             "折溢价率(%)": round(premium, 2),
             "市盈率": round(pe, 2) if pe else 0,
             "市净率": round(pb, 2) if pb else 0,
@@ -366,18 +352,6 @@ def get_fund_row_from_api(code):
         return fund_dict
     except Exception as e:
         return {"代码": code, "名称": f"获取失败:{str(e)[:50]}", "数据源": "❌ 错误"}
-
-def _fmt_amount(val):
-    """格式化金额"""
-    if val is None or val == 0:
-        return "0"
-    val = float(val)
-    if val >= 1e8:
-        return f"{val/1e8:.2f}亿"
-    elif val >= 1e4:
-        return f"{val/1e4:.2f}万"
-    else:
-        return str(int(val))
 
 def get_fund_row(code, force_refresh=False):
     """获取基金数据（优先从数据库，除非强制刷新）"""
