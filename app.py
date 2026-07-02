@@ -3,6 +3,11 @@ import signal as _signal
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import os
+
+# 清除系统代理，避免干扰东方财富 API 访问
+for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']:
+    os.environ.pop(key, None)
 
 # qstock 懒加载：不在文件头部导入，避免导入时触发网络请求导致报错
 # 只在 get_fund_row_from_api 函数内部按需导入
@@ -210,7 +215,7 @@ def load_fund_from_db(code):
 # 基金数据获取
 # ============================================================
 def get_fund_row_from_api(code):
-    """从 API 获取基金数据（懒加载 qstock）"""
+    """从 API 获取基金数据（懒加载 qstock），错误信息写入页面"""
     try:
         qs = get_qs()
         if qs is None:
@@ -228,7 +233,7 @@ def get_fund_row_from_api(code):
             else:
                 raise ValueError("场内数据为空，尝试场外获取")
         except Exception as e1:
-            print(f"[{code}] 场内获取失败: {e1}")
+st.warning(f"[{code}] 场内获取失败: {e1}")
             # 场外基金使用 fund_price 获取净值
             try:
                 price_data = qs.fund_price(code)
@@ -239,8 +244,8 @@ def get_fund_row_from_api(code):
                 else:
                     raise ValueError("无法获取基金价格数据")
             except Exception as e2:
-                print(f"[{code}] 场外获取失败: {e2}")
-                raise ValueError(f"价格获取失败: 场内={e1}, 场外={e2}")
+st.error(f"[{code}] 场外获取失败: {e2}")
+                raise ValueError(f"场内={e1}, 场外={e2}")
 
         # 基金基本信息
         try:
@@ -249,7 +254,7 @@ def get_fund_row_from_api(code):
                 raise ValueError("无法获取基金基本信息")
             name = info_df["基金简称"].iloc[0]
         except Exception as e3:
-            print(f"[{code}] 基金信息获取失败: {e3}")
+st.error(f"[{code}] 基金信息获取失败: {e3}")
             raise ValueError(f"基金信息获取失败: {e3}")
 
         # 基金业绩表现
@@ -260,7 +265,7 @@ def get_fund_row_from_api(code):
             else:
                 pmap = dict(zip(perf["时间段"], perf["收益率"]))
         except Exception as e4:
-            print(f"[{code}] 业绩数据获取失败: {e4}")
+st.warning(f"[{code}] 业绩获取失败: {e4}")
             pmap = {}
 
         fund_dict = {
@@ -367,20 +372,15 @@ tab1, tab2 = st.tabs(["📈 场内 ETF", "🏢 场外基金"])
 with tab1:
     st.subheader("场内 ETF 行情")
     
-    # 按钮区：刷新 / 删除 / 添加
+    # 按钮区：删除 / 添加
     col1, col2, col3, col4 = st.columns([1, 1, 1, 7])
     with col1:
-        if st.button("🔄 刷新", key="refresh_etf", type="primary"):
-            st.session_state.force_refresh_etf = True
-            st.success("✅ 正在从 API 获取最新数据...")
-            st.rerun()
-    with col2:
         del_label = "✅ 取消删除" if st.session_state.get('show_etf_delete') else "🗑️ 删除"
         if st.button(del_label, key="delete_etf_btn", type="secondary"):
             st.session_state.show_etf_delete = not st.session_state.get('show_etf_delete', False)
             st.session_state.show_etf_add = False
             st.rerun()
-    with col3:
+    with col2:
         add_label = "✅ 取消添加" if st.session_state.get('show_etf_add') else "➕ 添加"
         if st.button(add_label, key="add_etf_btn_toggle", type="secondary"):
             st.session_state.show_etf_add = not st.session_state.get('show_etf_add', False)
@@ -414,14 +414,13 @@ with tab1:
     # 加载数据
     with st.spinner("正在加载场内 ETF 数据..."):
         rows = []
+        refreshed_codes = st.session_state.get('refreshed_etf_codes', [])
         for code in ETF_CODES:
-            force = st.session_state.get('force_refresh_etf', False)
-            fund_data = get_fund_row(code, force_refresh=force)
+            fund_data = get_fund_row(code, force_refresh=(code in refreshed_codes))
             rows.append(fund_data)
-        
-        # 重置强制刷新标志
-        if 'force_refresh_etf' in st.session_state:
-            del st.session_state.force_refresh_etf
+        # 清除刷新标记
+        if refreshed_codes:
+            st.session_state.refreshed_etf_codes = []
     
     # 删除模式：显示带删除按钮的卡片
     if st.session_state.get('show_etf_delete', False):
@@ -454,30 +453,49 @@ with tab1:
                     for key in keys[half:]:
                         st.write(f"**{key}**: {rest_data[key]}")
     else:
-        # 正常模式，直接显示表格
+        # 正常模式：表格 + 勾选刷新
         if rows:
             df_etf = pd.DataFrame(rows)
             st.dataframe(df_etf, use_container_width=True, hide_index=True)
+            
+            # 勾选要刷新的基金
+            fund_options = {f"{r['代码']} - {r.get('名称', '')}": r['代码'] for r in rows}
+            col_sel, col_btn = st.columns([3, 1])
+            with col_sel:
+                selected = st.multiselect(
+                    "选择要刷新的基金",
+                    options=list(fund_options.keys()),
+                    label_visibility="collapsed",
+                    placeholder="勾选基金后点刷新按钮",
+                    key="refresh_select_etf"
+                )
+            with col_btn:
+                if st.button("🔄 刷新选中", key="refresh_selected_etf", type="primary", use_container_width=True):
+                    if selected:
+                        refreshed = []
+                        for label in selected:
+                            get_fund_row_from_api(fund_options[label])
+                            refreshed.append(fund_options[label])
+                        st.session_state.refreshed_etf_codes = refreshed
+                        st.success(f"✅ 已刷新 {len(selected)} 只基金")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ 请先勾选要刷新的基金")
     
     st.caption(f"当前监控 {len(ETF_CODES)} 只场内 ETF")
 
 with tab2:
     st.subheader("场外基金行情")
     
-    # 按钮区：刷新 / 删除 / 添加
+    # 按钮区：删除 / 添加
     col1, col2, col3, col4 = st.columns([1, 1, 1, 7])
     with col1:
-        if st.button("🔄 刷新", key="refresh_outside", type="primary"):
-            st.session_state.force_refresh_outside = True
-            st.success("✅ 正在从 API 获取最新数据...")
-            st.rerun()
-    with col2:
         del_label = "✅ 取消删除" if st.session_state.get('show_outside_delete') else "🗑️ 删除"
         if st.button(del_label, key="delete_outside_btn", type="secondary"):
             st.session_state.show_outside_delete = not st.session_state.get('show_outside_delete', False)
             st.session_state.show_outside_add = False
             st.rerun()
-    with col3:
+    with col2:
         add_label = "✅ 取消添加" if st.session_state.get('show_outside_add') else "➕ 添加"
         if st.button(add_label, key="add_outside_btn_toggle", type="secondary"):
             st.session_state.show_outside_add = not st.session_state.get('show_outside_add', False)
@@ -511,14 +529,12 @@ with tab2:
     # 加载数据
     with st.spinner("正在加载场外基金数据..."):
         rows = []
+        refreshed_codes = st.session_state.get('refreshed_outside_codes', [])
         for code in OUTSIDE_CODES:
-            force = st.session_state.get('force_refresh_outside', False)
-            fund_data = get_fund_row(code, force_refresh=force)
+            fund_data = get_fund_row(code, force_refresh=(code in refreshed_codes))
             rows.append(fund_data)
-        
-        # 重置强制刷新标志
-        if 'force_refresh_outside' in st.session_state:
-            del st.session_state.force_refresh_outside
+        if refreshed_codes:
+            st.session_state.refreshed_outside_codes = []
     
     # 删除模式：显示带删除按钮的卡片
     if st.session_state.get('show_outside_delete', False):
@@ -551,10 +567,34 @@ with tab2:
                     for key in keys[half:]:
                         st.write(f"**{key}**: {rest_data[key]}")
     else:
-        # 正常模式，直接显示表格
+        # 正常模式：表格 + 勾选刷新
         if rows:
             df_outside = pd.DataFrame(rows)
             st.dataframe(df_outside, use_container_width=True, hide_index=True)
+            
+            # 勾选要刷新的基金
+            fund_options = {f"{r['代码']} - {r.get('名称', '')}": r['代码'] for r in rows}
+            col_sel, col_btn = st.columns([3, 1])
+            with col_sel:
+                selected = st.multiselect(
+                    "选择要刷新的基金",
+                    options=list(fund_options.keys()),
+                    label_visibility="collapsed",
+                    placeholder="勾选基金后点刷新按钮",
+                    key="refresh_select_outside"
+                )
+            with col_btn:
+                if st.button("🔄 刷新选中", key="refresh_selected_outside", type="primary", use_container_width=True):
+                    if selected:
+                        refreshed = []
+                        for label in selected:
+                            get_fund_row_from_api(fund_options[label])
+                            refreshed.append(fund_options[label])
+                        st.session_state.refreshed_outside_codes = refreshed
+                        st.success(f"✅ 已刷新 {len(selected)} 只基金")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ 请先勾选要刷新的基金")
     
     st.caption(f"当前监控 {len(OUTSIDE_CODES)} 只场外基金")
 
