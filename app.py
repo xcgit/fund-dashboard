@@ -398,9 +398,13 @@ with tab1:
     # 加载数据
     with st.spinner("正在加载场内 ETF 数据..."):
         rows = []
+        refreshed_codes = st.session_state.get('refreshed_etf_codes', [])
         for code in ETF_CODES:
-            fund_data = get_fund_row(code)
+            fund_data = get_fund_row(code, force_refresh=(code in refreshed_codes))
             rows.append(fund_data)
+        # 清除刷新标记
+        if refreshed_codes:
+            st.session_state.refreshed_etf_codes = []
     
     # 删除模式：显示带删除按钮的卡片
     if st.session_state.get('show_etf_delete', False):
@@ -452,8 +456,11 @@ with tab1:
             with col_btn:
                 if st.button("🔄 刷新选中", key="refresh_selected_etf", type="primary", use_container_width=True):
                     if selected:
+                        refreshed = []
                         for label in selected:
                             get_fund_row_from_api(fund_options[label])
+                            refreshed.append(fund_options[label])
+                        st.session_state.refreshed_etf_codes = refreshed
                         st.success(f"✅ 已刷新 {len(selected)} 只基金")
                         st.rerun()
                     else:
@@ -506,9 +513,12 @@ with tab2:
     # 加载数据
     with st.spinner("正在加载场外基金数据..."):
         rows = []
+        refreshed_codes = st.session_state.get('refreshed_outside_codes', [])
         for code in OUTSIDE_CODES:
-            fund_data = get_fund_row(code)
+            fund_data = get_fund_row(code, force_refresh=(code in refreshed_codes))
             rows.append(fund_data)
+        if refreshed_codes:
+            st.session_state.refreshed_outside_codes = []
     
     # 删除模式：显示带删除按钮的卡片
     if st.session_state.get('show_outside_delete', False):
@@ -560,8 +570,11 @@ with tab2:
             with col_btn:
                 if st.button("🔄 刷新选中", key="refresh_selected_outside", type="primary", use_container_width=True):
                     if selected:
+                        refreshed = []
                         for label in selected:
                             get_fund_row_from_api(fund_options[label])
+                            refreshed.append(fund_options[label])
+                        st.session_state.refreshed_outside_codes = refreshed
                         st.success(f"✅ 已刷新 {len(selected)} 只基金")
                         st.rerun()
                     else:
