@@ -337,16 +337,49 @@ tab1, tab2 = st.tabs(["📈 场内 ETF", "🏢 场外基金"])
 with tab1:
     st.subheader("场内 ETF 行情")
     
-    # 手动刷新按钮
-    col1, col2, col3 = st.columns([1, 1, 8])
+    # 按钮区：刷新 / 删除 / 添加
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 7])
     with col1:
-        if st.button("🔄 刷新场内", key="refresh_etf", type="primary"):
+        if st.button("🔄 刷新", key="refresh_etf", type="primary"):
             st.session_state.force_refresh_etf = True
             st.success("✅ 正在从 API 获取最新数据...")
             st.rerun()
     with col2:
-        if st.button("🗑️ 管理", key="manage_etf", type="secondary"):
+        del_label = "✅ 取消删除" if st.session_state.get('show_etf_delete') else "🗑️ 删除"
+        if st.button(del_label, key="delete_etf_btn", type="secondary"):
             st.session_state.show_etf_delete = not st.session_state.get('show_etf_delete', False)
+            st.session_state.show_etf_add = False
+            st.rerun()
+    with col3:
+        add_label = "✅ 取消添加" if st.session_state.get('show_etf_add') else "➕ 添加"
+        if st.button(add_label, key="add_etf_btn_toggle", type="secondary"):
+            st.session_state.show_etf_add = not st.session_state.get('show_etf_add', False)
+            st.session_state.show_etf_delete = False
+            st.rerun()
+    
+    # 添加基金表单（展开在按钮下方）
+    if st.session_state.get('show_etf_add', False):
+        with st.container(border=True):
+            st.markdown("**添加场内 ETF：**")
+            col_a, col_b = st.columns([4, 1])
+            with col_a:
+                new_etf = st.text_input(
+                    "基金代码",
+                    key="new_etf_code",
+                    placeholder="例如: 510300",
+                    label_visibility="collapsed"
+                )
+            with col_b:
+                if st.button("确认添加", key="confirm_add_etf", use_container_width=True) and new_etf:
+                    code = new_etf.strip()
+                    if code not in ETF_CODES:
+                        if add_fund_to_list('etf', code):
+                            ETF_CODES.append(code)
+                            st.success(f"✅ 已添加 {code}")
+                            st.session_state.show_etf_add = False
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ 已在列表中")
     
     # 加载数据
     with st.spinner("正在加载场内 ETF 数据..."):
@@ -360,15 +393,12 @@ with tab1:
         if 'force_refresh_etf' in st.session_state:
             del st.session_state.force_refresh_etf
     
-    # 显示数据（根据管理状态决定是否显示删除按钮）
+    # 删除模式：显示带删除按钮的卡片
     if st.session_state.get('show_etf_delete', False):
-        # 管理模式下，显示带删除功能的数据
-        st.markdown("**管理模式：** 点击 ❌ 删除基金")
+        st.markdown("**删除模式：** 点击 ❌ 删除基金")
         
         for row_data in rows:
-            # 每个基金显示为一个卡片
             with st.container(border=True):
-                # 第一行：[删除按钮] [代码] [名称]
                 col_del, col_code, col_name = st.columns([1, 2, 5])
                 with col_del:
                     if st.button("❌", key=f"del_etf_{row_data['代码']}", help="删除"):
@@ -380,11 +410,8 @@ with tab1:
                 with col_name:
                     st.caption(row_data.get('名称', ''))
                 
-                # 其余数据显示为键值对
                 rest_data = {k: v for k, v in row_data.items() 
                            if k not in ['代码', '名称']}
-                
-                # 用两列显示其余数据
                 keys = list(rest_data.keys())
                 half = (len(keys) + 1) // 2
                 col_left, col_right = st.columns(2)
@@ -403,43 +430,53 @@ with tab1:
             st.dataframe(df_etf, use_container_width=True, hide_index=True)
     
     st.caption(f"当前监控 {len(ETF_CODES)} 只场内 ETF")
-    
-    # 管理模式下显示添加功能
-    if st.session_state.get('show_etf_delete', False):
-        st.markdown("---")
-        st.markdown("**添加基金：**")
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            new_etf = st.text_input(
-                "输入基金代码", 
-                key="new_etf_code", 
-                placeholder="例如: 510300",
-                label_visibility="collapsed"
-            )
-        with col2:
-            if st.button("➕ 添加", key="add_etf_btn", use_container_width=True) and new_etf:
-                code = new_etf.strip()
-                if code not in ETF_CODES:
-                    if add_fund_to_list('etf', code):
-                        ETF_CODES.append(code)
-                        st.success(f"✅ 已添加 {code}")
-                        st.rerun()
-                else:
-                    st.warning("⚠️ 已在列表中")
 
 with tab2:
     st.subheader("场外基金行情")
     
-    # 手动刷新按钮
-    col1, col2, col3 = st.columns([1, 1, 8])
+    # 按钮区：刷新 / 删除 / 添加
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 7])
     with col1:
-        if st.button("🔄 刷新场外", key="refresh_outside", type="primary"):
+        if st.button("🔄 刷新", key="refresh_outside", type="primary"):
             st.session_state.force_refresh_outside = True
             st.success("✅ 正在从 API 获取最新数据...")
             st.rerun()
     with col2:
-        if st.button("🗑️ 管理", key="manage_outside", type="secondary"):
+        del_label = "✅ 取消删除" if st.session_state.get('show_outside_delete') else "🗑️ 删除"
+        if st.button(del_label, key="delete_outside_btn", type="secondary"):
             st.session_state.show_outside_delete = not st.session_state.get('show_outside_delete', False)
+            st.session_state.show_outside_add = False
+            st.rerun()
+    with col3:
+        add_label = "✅ 取消添加" if st.session_state.get('show_outside_add') else "➕ 添加"
+        if st.button(add_label, key="add_outside_btn_toggle", type="secondary"):
+            st.session_state.show_outside_add = not st.session_state.get('show_outside_add', False)
+            st.session_state.show_outside_delete = False
+            st.rerun()
+    
+    # 添加基金表单（展开在按钮下方）
+    if st.session_state.get('show_outside_add', False):
+        with st.container(border=True):
+            st.markdown("**添加场外基金：**")
+            col_a, col_b = st.columns([4, 1])
+            with col_a:
+                new_outside = st.text_input(
+                    "基金代码",
+                    key="new_outside_code",
+                    placeholder="例如: 006100",
+                    label_visibility="collapsed"
+                )
+            with col_b:
+                if st.button("确认添加", key="confirm_add_outside", use_container_width=True) and new_outside:
+                    code = new_outside.strip()
+                    if code not in OUTSIDE_CODES:
+                        if add_fund_to_list('outside', code):
+                            OUTSIDE_CODES.append(code)
+                            st.success(f"✅ 已添加 {code}")
+                            st.session_state.show_outside_add = False
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ 已在列表中")
     
     # 加载数据
     with st.spinner("正在加载场外基金数据..."):
@@ -453,15 +490,12 @@ with tab2:
         if 'force_refresh_outside' in st.session_state:
             del st.session_state.force_refresh_outside
     
-    # 显示数据（根据管理状态决定是否显示删除按钮）
+    # 删除模式：显示带删除按钮的卡片
     if st.session_state.get('show_outside_delete', False):
-        # 管理模式下，显示带删除功能的数据（卡片布局，移动端友好）
-        st.markdown("**管理模式：** 点击 ❌ 删除基金")
+        st.markdown("**删除模式：** 点击 ❌ 删除基金")
         
         for row_data in rows:
-            # 每个基金显示为一个卡片
             with st.container(border=True):
-                # 第一行：[删除按钮] [代码] [名称]
                 col_del, col_code, col_name = st.columns([1, 2, 5])
                 with col_del:
                     if st.button("❌", key=f"del_outside_{row_data['代码']}", help="删除"):
@@ -473,11 +507,8 @@ with tab2:
                 with col_name:
                     st.caption(row_data.get('名称', ''))
                 
-                # 其余数据显示为键值对
                 rest_data = {k: v for k, v in row_data.items() 
                            if k not in ['代码', '名称']}
-                
-                # 用两列显示其余数据
                 keys = list(rest_data.keys())
                 half = (len(keys) + 1) // 2
                 col_left, col_right = st.columns(2)
@@ -496,29 +527,6 @@ with tab2:
             st.dataframe(df_outside, use_container_width=True, hide_index=True)
     
     st.caption(f"当前监控 {len(OUTSIDE_CODES)} 只场外基金")
-    
-    # 管理模式下显示添加功能
-    if st.session_state.get('show_outside_delete', False):
-        st.markdown("---")
-        st.markdown("**添加基金：**")
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            new_outside = st.text_input(
-                "输入基金代码", 
-                key="new_outside_code", 
-                placeholder="例如: 006100",
-                label_visibility="collapsed"
-            )
-        with col2:
-            if st.button("➕ 添加", key="add_outside_btn", use_container_width=True) and new_outside:
-                code = new_outside.strip()
-                if code not in OUTSIDE_CODES:
-                    if add_fund_to_list('outside', code):
-                        OUTSIDE_CODES.append(code)
-                        st.success(f"✅ 已添加 {code}")
-                        st.rerun()
-                else:
-                    st.warning("⚠️ 已在列表中")
 
 # 导出 Excel（合并两个 Tab 的数据）
 @st.cache_data
