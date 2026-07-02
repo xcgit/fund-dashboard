@@ -49,6 +49,13 @@ def init_db():
                       update_time TEXT,
                       PRIMARY KEY (code, update_time))''')
         
+        # 增量添加新字段（兼容已有数据库）
+        for col in ['amount', 'scale', 'premium', 'pe', 'pb', 'dividend']:
+            try:
+                c.execute(f"ALTER TABLE fund_data ADD COLUMN {col} TEXT DEFAULT ''")
+            except:
+                pass
+        
         # 创建基金列表配置表
         c.execute('''CREATE TABLE IF NOT EXISTS fund_list
                      (type TEXT, code TEXT, create_time TEXT,
@@ -153,8 +160,9 @@ def save_fund_to_db(fund_dict):
         
         c.execute('''INSERT OR REPLACE INTO fund_data 
                      (code, name, price, chg_pct, week_ret, month_ret, 
-                      three_month_ret, six_month_ret, year_ret, three_year_ret, update_time)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                      three_month_ret, six_month_ret, year_ret, three_year_ret, update_time,
+                      amount, scale, premium, pe, pb, dividend)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                   (fund_dict['代码'], 
                    fund_dict['名称'], 
                    fund_dict.get('最新价', 0),
@@ -165,7 +173,13 @@ def save_fund_to_db(fund_dict):
                    fund_dict.get('近6月(%)', 0),
                    fund_dict.get('近一年(%)', 0),
                    fund_dict.get('近3年(%)', 0),
-                   fund_dict.get('更新时间', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))))
+                   fund_dict.get('更新时间', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                   str(fund_dict.get('成交额', '0')),
+                   str(fund_dict.get('规模', '0')),
+                   str(fund_dict.get('折溢价率(%)', 0)),
+                   str(fund_dict.get('市盈率', 0)),
+                   str(fund_dict.get('市净率', 0)),
+                   str(fund_dict.get('股息率(%)', 0))))
         
         conn.commit()
         conn.close()
@@ -182,7 +196,8 @@ def load_fund_from_db(code):
         
         # 查询最新的数据
         c.execute('''SELECT code, name, price, chg_pct, week_ret, month_ret,
-                          three_month_ret, six_month_ret, year_ret, three_year_ret, update_time
+                          three_month_ret, six_month_ret, year_ret, three_year_ret, update_time,
+                          amount, scale, premium, pe, pb, dividend
                    FROM fund_data 
                    WHERE code = ?
                    ORDER BY update_time DESC 
@@ -204,6 +219,12 @@ def load_fund_from_db(code):
                 "近一年(%)": result[8],
                 "近3年(%)": result[9],
                 "更新时间": result[10],
+                "成交额": result[11] if len(result) > 11 else "0",
+                "规模": result[12] if len(result) > 12 else "0",
+                "折溢价率(%)": float(result[13]) if len(result) > 13 and result[13] else 0,
+                "市盈率": float(result[14]) if len(result) > 14 and result[14] else 0,
+                "市净率": float(result[15]) if len(result) > 15 and result[15] else 0,
+                "股息率(%)": float(result[16]) if len(result) > 16 and result[16] else 0,
                 "数据源": "📀 SQLite"
             }
         return None
@@ -223,18 +244,34 @@ def get_fund_row_from_api(code):
         
         price = None
         chg_pct = 0
+        amount = 0       # 成交额
+        scale = 0         # 规模(总市值)
+        premium = 0       # 折溢价率
+        pe = 0            # 市盈率
+        pb = 0            # 市净率
+        dividend = 0      # 股息率
         
         # 判断是场内ETF还是场外基金
         try:
             rt = qs.realtime_data(code=code)
             if rt is not None and not rt.empty and "最新" in rt.columns:
                 price = rt["最新"].iloc[0]
-                chg_pct = rt["涨幅"].iloc[0]
+                chg_pct = rt["涨幅"].iloc[0] if "涨幅" in rt.columns else 0
+                # 成交额
+                if "成交额" in rt.columns:
+                    amount = float(rt["成交额"].iloc[0] or 0)
+                # 总市值（规模）
+                if "总市值" in rt.columns:
+                    scale = float(rt["总市值"].iloc[0] or 0)
+                # 折溢价率
+                if "IOPV" in rt.columns:
+                    iopv = float(rt["IOPV"].iloc[0] or 0)
+                    if iopv > 0 and price and price > 0:
+                        premium = round((price - iopv) / iopv * 100, 2)
             else:
                 raise ValueError("场内数据为空，尝试场外获取")
         except Exception as e1:
-st.warning(f"[{code}] 场内获取失败: {e1}")
-            # 场外基金使用 fund_price 获取净值
+            st.warning(f"[{code}] 场内获取失败: {e1}")
             try:
                 price_data = qs.fund_price(code)
                 if price_data is not None and not price_data.empty:
@@ -244,7 +281,7 @@ st.warning(f"[{code}] 场内获取失败: {e1}")
                 else:
                     raise ValueError("无法获取基金价格数据")
             except Exception as e2:
-st.error(f"[{code}] 场外获取失败: {e2}")
+                st.error(f"[{code}] 场外获取失败: {e2}")
                 raise ValueError(f"场内={e1}, 场外={e2}")
 
         # 基金基本信息
@@ -254,7 +291,7 @@ st.error(f"[{code}] 场外获取失败: {e2}")
                 raise ValueError("无法获取基金基本信息")
             name = info_df["基金简称"].iloc[0]
         except Exception as e3:
-st.error(f"[{code}] 基金信息获取失败: {e3}")
+            st.error(f"[{code}] 基金信息获取失败: {e3}")
             raise ValueError(f"基金信息获取失败: {e3}")
 
         # 基金业绩表现
@@ -265,14 +302,31 @@ st.error(f"[{code}] 基金信息获取失败: {e3}")
             else:
                 pmap = dict(zip(perf["时间段"], perf["收益率"]))
         except Exception as e4:
-st.warning(f"[{code}] 业绩获取失败: {e4}")
+            st.warning(f"[{code}] 业绩获取失败: {e4}")
             pmap = {}
+        
+        # 获取 PE/PB/股息率（场内 ETF）
+        if code.isdigit() and len(code) == 6:
+            try:
+                stock_info = qs.stock_info(code)
+                if stock_info is not None and not stock_info.empty:
+                    row = stock_info.iloc[0]
+                    pe = float(row.get('市盈率-动态', row.get('市盈率', 0)) or 0)
+                    pb = float(row.get('市净率', 0) or 0)
+            except Exception:
+                pass
 
         fund_dict = {
             "代码": code,
             "名称": name,
-            "最新价": round(price, 4),
-            "日涨跌幅(%)": round(chg_pct, 2),
+            "最新价": round(price, 4) if price else 0,
+            "日涨跌幅(%)": round(chg_pct, 2) if chg_pct else 0,
+            "成交额": _fmt_amount(amount),
+            "规模": _fmt_amount(scale),
+            "折溢价率(%)": round(premium, 2),
+            "市盈率": round(pe, 2) if pe else 0,
+            "市净率": round(pb, 2) if pb else 0,
+            "股息率(%)": round(dividend, 2),
             "近一周(%)": round(pmap.get("近一周", 0), 2),
             "近一月(%)": round(pmap.get("近一月", 0), 2),
             "近3月(%)": round(pmap.get("近三月", 0), 2),
@@ -283,12 +337,22 @@ st.warning(f"[{code}] 业绩获取失败: {e4}")
             "数据源": "🌐 API"
         }
         
-        # 写入数据库
         save_fund_to_db(fund_dict)
-        
         return fund_dict
     except Exception as e:
-        return {"代码": code, "名称": f"获取失败:{str(e)}", "数据源": "❌ 错误"}
+        return {"代码": code, "名称": f"获取失败:{str(e)[:50]}", "数据源": "❌ 错误"}
+
+def _fmt_amount(val):
+    """格式化金额"""
+    if val is None or val == 0:
+        return "0"
+    val = float(val)
+    if val >= 1e8:
+        return f"{val/1e8:.2f}亿"
+    elif val >= 1e4:
+        return f"{val/1e4:.2f}万"
+    else:
+        return str(int(val))
 
 def get_fund_row(code, force_refresh=False):
     """获取基金数据（优先从数据库，除非强制刷新）"""
