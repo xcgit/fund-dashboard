@@ -3,6 +3,11 @@ import signal as _signal
 import sqlite3
 import pandas as pd
 from datetime import datetime
+import os
+
+# 清除系统代理，避免干扰东方财富 API 访问
+for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']:
+    os.environ.pop(key, None)
 
 # qstock 懒加载：不在文件头部导入，避免导入时触发网络请求导致报错
 # 只在 get_fund_row_from_api 函数内部按需导入
