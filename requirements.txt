@@ -2,3 +2,5 @@ streamlit>=1.30
 qstock
 pandas
 openpyxl
+backtrader
+pyfolio-reloaded
