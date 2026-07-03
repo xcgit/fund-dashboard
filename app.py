@@ -435,32 +435,27 @@ tab1, tab2 = st.tabs(["📈 场内 ETF", "🏢 场外基金"])
 with tab1:
     st.subheader("场内 ETF 行情")
     
-    # 按钮区：删除 / 添加
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 7])
+    # 按钮区：添加
+    col1, col2, col3 = st.columns([1, 1, 8])
     with col1:
-        del_label = "✅ 取消删除" if st.session_state.get('show_etf_delete') else "🗑️ 删除"
-        if st.button(del_label, key="delete_etf_btn", type="secondary"):
-            st.session_state.show_etf_delete = not st.session_state.get('show_etf_delete', False)
-            st.session_state.show_etf_add = False
-            st.rerun()
-    with col2:
         add_label = "✅ 取消添加" if st.session_state.get('show_etf_add') else "➕ 添加"
         if st.button(add_label, key="add_etf_btn_toggle", type="secondary"):
             st.session_state.show_etf_add = not st.session_state.get('show_etf_add', False)
-            st.session_state.show_etf_delete = False
+            st.rerun()
+    with col2:
+        if st.button("🔄 全部刷新", key="refresh_all_etf", type="primary"):
+            st.session_state.refreshed_etf_codes = list(ETF_CODES)
             st.rerun()
     
-    # 添加基金表单（展开在按钮下方）
+    # 添加基金表单
     if st.session_state.get('show_etf_add', False):
         with st.container(border=True):
             st.markdown("**添加场内 ETF：**")
             col_a, col_b = st.columns([4, 1])
             with col_a:
                 new_etf = st.text_input(
-                    "基金代码",
-                    key="new_etf_code",
-                    placeholder="例如: 510300",
-                    label_visibility="collapsed"
+                    "基金代码", key="new_etf_code",
+                    placeholder="例如: 510300", label_visibility="collapsed"
                 )
             with col_b:
                 if st.button("确认添加", key="confirm_add_etf", use_container_width=True) and new_etf:
@@ -481,101 +476,77 @@ with tab1:
         for code in ETF_CODES:
             fund_data = get_fund_row(code, force_refresh=(code in refreshed_codes))
             rows.append(fund_data)
-        # 清除刷新标记
         if refreshed_codes:
             st.session_state.refreshed_etf_codes = []
     
-    # 删除模式：显示带删除按钮的卡片
-    if st.session_state.get('show_etf_delete', False):
-        st.markdown("**删除模式：** 点击 ❌ 删除基金")
+    # 用 data_editor 显示，第一列是勾选框
+    if rows:
+        df_etf = pd.DataFrame(rows)
+        df_etf.insert(0, '选择', False)
+        # 其他列只读
+        disabled_cols = [c for c in df_etf.columns if c != '选择']
         
-        for row_data in rows:
-            with st.container(border=True):
-                col_del, col_code, col_name = st.columns([1, 2, 5])
-                with col_del:
-                    if st.button("❌", key=f"del_etf_{row_data['代码']}", help="删除"):
-                        remove_fund_from_list('etf', row_data['代码'])
-                        ETF_CODES.remove(row_data['代码'])
-                        st.rerun()
-                with col_code:
-                    st.markdown(f"`{row_data['代码']}`")
-                with col_name:
-                    st.caption(row_data.get('名称', ''))
-                
-                rest_data = {k: v for k, v in row_data.items() 
-                           if k not in ['代码', '名称']}
-                keys = list(rest_data.keys())
-                half = (len(keys) + 1) // 2
-                col_left, col_right = st.columns(2)
-                
-                with col_left:
-                    for key in keys[:half]:
-                        st.write(f"**{key}**: {rest_data[key]}")
-                
-                with col_right:
-                    for key in keys[half:]:
-                        st.write(f"**{key}**: {rest_data[key]}")
-    else:
-        # 正常模式：表格 + 勾选刷新
-        if rows:
-            df_etf = pd.DataFrame(rows)
-            st.dataframe(df_etf, use_container_width=True, hide_index=True)
-            
-            # 勾选要刷新的基金
-            fund_options = {f"{r['代码']} - {r.get('名称', '')}": r['代码'] for r in rows}
-            col_sel, col_btn = st.columns([3, 1])
-            with col_sel:
-                selected = st.multiselect(
-                    "选择要刷新的基金",
-                    options=list(fund_options.keys()),
-                    label_visibility="collapsed",
-                    placeholder="勾选基金后点刷新按钮",
-                    key="refresh_select_etf"
-                )
-            with col_btn:
-                if st.button("🔄 刷新选中", key="refresh_selected_etf", type="primary", use_container_width=True):
-                    if selected:
-                        refreshed = []
-                        for label in selected:
-                            get_fund_row_from_api(fund_options[label])
-                            refreshed.append(fund_options[label])
-                        st.session_state.refreshed_etf_codes = refreshed
-                        st.success(f"✅ 已刷新 {len(selected)} 只基金")
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ 请先勾选要刷新的基金")
+        edited = st.data_editor(
+            df_etf, use_container_width=True, hide_index=True,
+            disabled=disabled_cols, key='editor_etf'
+        )
+        
+        # 获取选中的基金
+        selected_codes = []
+        for i, row in edited.iterrows():
+            if row['选择']:
+                selected_codes.append(row['代码'])
+        
+        # 表格外操作按钮
+        col_btn1, col_btn2, col_info = st.columns([1, 1, 4])
+        with col_btn1:
+            if st.button("🔄 刷新选中", key="refresh_sel_etf", type="primary", use_container_width=True):
+                if selected_codes:
+                    for code in selected_codes:
+                        get_fund_row_from_api(code)
+                    st.session_state.refreshed_etf_codes = selected_codes
+                    st.success(f"✅ 已刷新 {len(selected_codes)} 只基金")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ 请先在表格中勾选基金")
+        with col_btn2:
+            if st.button("🗑️ 删除选中", key="del_sel_etf", type="secondary", use_container_width=True):
+                if selected_codes:
+                    for code in selected_codes:
+                        remove_fund_from_list('etf', code)
+                        if code in ETF_CODES:
+                            ETF_CODES.remove(code)
+                    st.success(f"✅ 已删除 {len(selected_codes)} 只基金")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ 请先在表格中勾选基金")
     
     st.caption(f"当前监控 {len(ETF_CODES)} 只场内 ETF")
 
 with tab2:
     st.subheader("场外基金行情")
     
-    # 按钮区：删除 / 添加
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 7])
+    # 按钮区：添加 / 全部刷新
+    col1, col2, col3 = st.columns([1, 1, 8])
     with col1:
-        del_label = "✅ 取消删除" if st.session_state.get('show_outside_delete') else "🗑️ 删除"
-        if st.button(del_label, key="delete_outside_btn", type="secondary"):
-            st.session_state.show_outside_delete = not st.session_state.get('show_outside_delete', False)
-            st.session_state.show_outside_add = False
-            st.rerun()
-    with col2:
         add_label = "✅ 取消添加" if st.session_state.get('show_outside_add') else "➕ 添加"
         if st.button(add_label, key="add_outside_btn_toggle", type="secondary"):
             st.session_state.show_outside_add = not st.session_state.get('show_outside_add', False)
-            st.session_state.show_outside_delete = False
+            st.rerun()
+    with col2:
+        if st.button("🔄 全部刷新", key="refresh_all_outside", type="primary"):
+            st.session_state.refreshed_outside_codes = list(OUTSIDE_CODES)
             st.rerun()
     
-    # 添加基金表单（展开在按钮下方）
+    # 添加基金表单
     if st.session_state.get('show_outside_add', False):
         with st.container(border=True):
             st.markdown("**添加场外基金：**")
             col_a, col_b = st.columns([4, 1])
             with col_a:
                 new_outside = st.text_input(
-                    "基金代码",
-                    key="new_outside_code",
-                    placeholder="例如: 006100",
-                    label_visibility="collapsed"
+                    "基金代码", key="new_outside_code",
+                    placeholder="例如: 006100", label_visibility="collapsed"
                 )
             with col_b:
                 if st.button("确认添加", key="confirm_add_outside", use_container_width=True) and new_outside:
@@ -599,65 +570,46 @@ with tab2:
         if refreshed_codes:
             st.session_state.refreshed_outside_codes = []
     
-    # 删除模式：显示带删除按钮的卡片
-    if st.session_state.get('show_outside_delete', False):
-        st.markdown("**删除模式：** 点击 ❌ 删除基金")
+    # 用 data_editor 显示，第一列是勾选框
+    if rows:
+        df_outside = pd.DataFrame(rows)
+        df_outside.insert(0, '选择', False)
+        disabled_cols = [c for c in df_outside.columns if c != '选择']
         
-        for row_data in rows:
-            with st.container(border=True):
-                col_del, col_code, col_name = st.columns([1, 2, 5])
-                with col_del:
-                    if st.button("❌", key=f"del_outside_{row_data['代码']}", help="删除"):
-                        remove_fund_from_list('outside', row_data['代码'])
-                        OUTSIDE_CODES.remove(row_data['代码'])
-                        st.rerun()
-                with col_code:
-                    st.markdown(f"`{row_data['代码']}`")
-                with col_name:
-                    st.caption(row_data.get('名称', ''))
-                
-                rest_data = {k: v for k, v in row_data.items() 
-                           if k not in ['代码', '名称']}
-                keys = list(rest_data.keys())
-                half = (len(keys) + 1) // 2
-                col_left, col_right = st.columns(2)
-                
-                with col_left:
-                    for key in keys[:half]:
-                        st.write(f"**{key}**: {rest_data[key]}")
-                
-                with col_right:
-                    for key in keys[half:]:
-                        st.write(f"**{key}**: {rest_data[key]}")
-    else:
-        # 正常模式：表格 + 勾选刷新
-        if rows:
-            df_outside = pd.DataFrame(rows)
-            st.dataframe(df_outside, use_container_width=True, hide_index=True)
-            
-            # 勾选要刷新的基金
-            fund_options = {f"{r['代码']} - {r.get('名称', '')}": r['代码'] for r in rows}
-            col_sel, col_btn = st.columns([3, 1])
-            with col_sel:
-                selected = st.multiselect(
-                    "选择要刷新的基金",
-                    options=list(fund_options.keys()),
-                    label_visibility="collapsed",
-                    placeholder="勾选基金后点刷新按钮",
-                    key="refresh_select_outside"
-                )
-            with col_btn:
-                if st.button("🔄 刷新选中", key="refresh_selected_outside", type="primary", use_container_width=True):
-                    if selected:
-                        refreshed = []
-                        for label in selected:
-                            get_fund_row_from_api(fund_options[label])
-                            refreshed.append(fund_options[label])
-                        st.session_state.refreshed_outside_codes = refreshed
-                        st.success(f"✅ 已刷新 {len(selected)} 只基金")
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ 请先勾选要刷新的基金")
+        edited = st.data_editor(
+            df_outside, use_container_width=True, hide_index=True,
+            disabled=disabled_cols, key='editor_outside'
+        )
+        
+        # 获取选中的基金
+        selected_codes = []
+        for i, row in edited.iterrows():
+            if row['选择']:
+                selected_codes.append(row['代码'])
+        
+        # 表格外操作按钮
+        col_btn1, col_btn2, col_info = st.columns([1, 1, 4])
+        with col_btn1:
+            if st.button("🔄 刷新选中", key="refresh_sel_outside", type="primary", use_container_width=True):
+                if selected_codes:
+                    for code in selected_codes:
+                        get_fund_row_from_api(code)
+                    st.session_state.refreshed_outside_codes = selected_codes
+                    st.success(f"✅ 已刷新 {len(selected_codes)} 只基金")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ 请先在表格中勾选基金")
+        with col_btn2:
+            if st.button("🗑️ 删除选中", key="del_sel_outside", type="secondary", use_container_width=True):
+                if selected_codes:
+                    for code in selected_codes:
+                        remove_fund_from_list('outside', code)
+                        if code in OUTSIDE_CODES:
+                            OUTSIDE_CODES.remove(code)
+                    st.success(f"✅ 已删除 {len(selected_codes)} 只基金")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ 请先在表格中勾选基金")
     
     st.caption(f"当前监控 {len(OUTSIDE_CODES)} 只场外基金")
 
