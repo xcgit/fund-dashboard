@@ -235,6 +235,21 @@ def load_fund_from_db(code):
 # ============================================================
 # 基金数据获取
 # ============================================================
+def _fmt_money(val):
+    """格式化金额：元 → 亿/万"""
+    if val is None or val == '' or val == 0 or val == '0':
+        return '0'
+    try:
+        v = float(str(val).replace(',', ''))
+        if v >= 1e8:
+            return f'{v/1e8:.2f}亿'
+        elif v >= 1e4:
+            return f'{v/1e4:.2f}万'
+        else:
+            return str(int(v))
+    except:
+        return str(val)
+
 def get_fund_row_from_api(code):
     """从 API 获取基金数据（懒加载 qstock），错误信息写入页面"""
     try:
@@ -261,12 +276,12 @@ def get_fund_row_from_api(code):
                 if not hasattr(get_fund_row_from_api, '_debug_printed'):
                     st.info(f"realtime_data 可用列: {list(rt.columns)}")
                     get_fund_row_from_api._debug_printed = True
-                # 成交额 - 字符串格式如 "1.23亿"，直接存
+                # 成交额 - 转换成亿/万格式
                 if "成交额" in rt.columns:
-                    amount = str(rt["成交额"].iloc[0] or '0')
-                # 规模 - 用流通市值，字符串格式
+                    amount = _fmt_money(rt["成交额"].iloc[0])
+                # 规模 - 用流通市值，转换成亿/万格式
                 if "流通市值" in rt.columns:
-                    scale = str(rt["流通市值"].iloc[0] or '0')
+                    scale = _fmt_money(rt["流通市值"].iloc[0])
                 elif "总市值" in rt.columns:
                     scale = str(rt["总市值"].iloc[0] or '0')
                 # 折溢价率 - 通过最新价和昨收计算，或 IOPV
