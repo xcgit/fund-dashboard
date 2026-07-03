@@ -316,25 +316,8 @@ def get_fund_row_from_api(code):
             st.warning(f"[{code}] 业绩获取失败: {e4}")
             pmap = {}
         
-        # 获取 PE/PB/股息率（场内 ETF）
-        if code.isdigit() and len(code) == 6 and pe == 0:
-            try:
-                # ETF 的 PE/PB 通过 realtime_data 已经有了市盈率
-                # 尝试获取更多估值数据
-                stock_info = qs.stock_info(code)
-                if stock_info is not None and not stock_info.empty:
-                    row = stock_info.iloc[0]
-                    # 打印列名辅助调试（仅首次）
-                    if not hasattr(get_fund_row_from_api, '_stock_info_debug'):
-                        st.info(f"stock_info 可用列: {list(stock_info.columns)}")
-                        get_fund_row_from_api._stock_info_debug = True
-                    # 市盈率优先用 realtime_data 里已有的
-                    if pe == 0:
-                        pe = float(row.get('市盈率-动态', row.get('市盈率', 0)) or 0)
-                    if pb == 0:
-                        pb = float(row.get('市净率', 0) or 0)
-            except Exception as e5:
-                st.warning(f"[{code}] PE/PB获取失败: {e5}")
+        # 市盈率已从 realtime_data 获取，市净率和股息率暂不支持（ETF 无此数据）
+        # ETF 的 PE 已在上方 realtime_data 中获取
 
         fund_dict = {
             "代码": code,
